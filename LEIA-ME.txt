@@ -1,0 +1,24 @@
+PLANILHADO — PWA
+
+Arquivos principais:
+- index.html
+- manifest.json
+- sw.js
+- icon-192.svg
+- icon-512.svg
+
+Recursos:
+- Geral / Casa / Barbearia
+- Contas por mês e vencimento
+- Pago / pendente / atrasado
+- Totais automáticos
+- Edição de contas sem precisar excluir
+- Análise em barras por categoria para Casa e Barbearia
+- Categorias personalizadas, como Gasolina
+- Dados salvos localmente no navegador/aparelho
+
+IMPORTANTE:
+Para instalar como app no iPhone, os arquivos precisam estar publicados em HTTPS.
+Depois, no Safari do iPhone: Compartilhar -> Adicionar à Tela de Início.
+
+A versão atual salva os dados no próprio navegador/aparelho; não há sincronização entre dispositivos.
