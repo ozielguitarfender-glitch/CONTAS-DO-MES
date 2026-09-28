@@ -22,3 +22,10 @@ Para instalar como app no iPhone, os arquivos precisam estar publicados em HTTPS
 Depois, no Safari do iPhone: Compartilhar -> Adicionar à Tela de Início.
 
 A versão atual salva os dados no próprio navegador/aparelho; não há sincronização entre dispositivos.
+
+
+ATUALIZAÇÃO DE PERFIL E NOTIFICAÇÕES (beta):
+- Perfil permite salvar nome, exibir iniciais, alterar senha e escolher tema claro/escuro/automático.
+- Permissão e notificação de teste usam a API de notificações do navegador. No iPhone, o PWA deve estar adicionado à Tela de Início e usar iOS compatível.
+- O service worker já reconhece eventos push recebidos, mas o envio automático de lembretes PUSH ainda NÃO está ativo: requer chave pública VAPID, armazenamento de subscriptions e um serviço seguro de envio (por exemplo, Supabase Edge Function com secrets).
+- A tela informa que gerenciamento remoto de outras sessões ainda não está disponível.
