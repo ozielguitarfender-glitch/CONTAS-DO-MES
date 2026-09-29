@@ -71,7 +71,101 @@ function renderCatList(){const list=workbooks.map(w=>{const rows=categories.filt
 function renderReminders(){const m=$("reminderMonth").value,todayIso=iso(new Date());const rows=accounts.filter(a=>a.status!=="paid"&&Number(a.reminder_days)!==-1&&a.date.startsWith(m)).map(a=>({...a,remindDate:addDays(a.date,-Number(a.reminder_days||0))})).filter(a=>a.remindDate>=todayIso).sort((a,b)=>a.remindDate.localeCompare(b.remindDate)||a.date.localeCompare(b.date));const box=$("reminders");box.innerHTML="";if(!rows.length){box.innerHTML='<div class="empty">Nenhum lembrete próximo para este mês.</div>';return}rows.forEach(a=>{const el=document.createElement("div");el.className="reminder-item";el.innerHTML='<div><div class="name">'+esc(a.desc)+'</div><div class="meta">'+esc(wbName(a.workbook_id))+' · '+esc(catName(a.category_id))+' · vence '+fmt(a.date)+'</div><span class="reminder">🔔 '+reminderLabel(a.reminder_days)+'</span></div><div class="right"><div class="value">'+money(a.value)+'</div><div class="meta">Lembrar: '+fmt(a.remindDate)+'</div><div><button class="smallbtn edit" data-remedit="'+a.id+'">Editar</button></div></div>';box.appendChild(el)})}
 async function ensureDefaults(){let {data:wb,error}=await client.from("workbooks").select("*").eq("user_id",user.id).order("created_at");if(error)throw error;if(!wb.length){const {data:newW,error:e}=await client.from("workbooks").insert([{user_id:user.id,name:"Planilha 1",icon:"📊"},{user_id:user.id,name:"Planilha 2",icon:"📊"}]).select();if(e)throw e;wb=newW;for(const w of wb){const {error:ce}=await client.from("categories").insert(defaultCats.map(name=>({user_id:user.id,workbook_id:w.id,name})));if(ce)throw ce}}workbooks=wb}
 async function loadCloud(){const {data:cats,error:ce}=await client.from("categories").select("*").eq("user_id",user.id);if(ce)throw ce;categories=cats||[];const {data:tx,error:te}=await client.from("transactions").select("*").eq("user_id",user.id).order("due_date");if(te)throw te;accounts=(tx||[]).map(t=>({id:t.id,workbook_id:t.workbook_id,category_id:t.category_id,desc:t.description,value:Number(t.amount),date:t.due_date,status:t.status||"pending",reminder_days:Number(t.reminder_days??1)}))}
-async function enterApp(u){if(loading||user?.id===u.id)return;loading=true;user=u;$("authView").classList.add("hidden");$("appView").classList.add("hidden");authMessage("Carregando suas planilhas...");try{await client.from("profiles").upsert({id:user.id,full_name:user.user_metadata?.full_name||""},{onConflict:"id"});await ensureDefaults();await loadCloud();showApp();updateAvatar();setTabs();fillWorkbookOptions();render();const old=JSON.parse(localStorage.getItem(LEGACY_KEY)||"[]");const localCats=JSON.parse(localStorage.getItem(LEGACY_CATKEY)||"null")||defaultCats;if(accounts.length===0&&old.length&&!localStorage.getItem("planilhado_migrated_"+user.id)){ $("appView").classList.add("hidden");$("migrationView").classList.remove("hidden");$("migrationSummary").textContent="Encontramos "+old.length+" lançamento(s) antigos neste aparelho. Eles serão associados às planilhas Casa e Barbearia quando importados."; }}catch(e){showAuth();authMessage("Não foi possível carregar o banco: "+(e.message||e));}finally{loading=false}}
+async function enterApp(u) {
+  if (loading || user?.id === u.id) return;
+
+  loading = true;
+  user = u;
+  $("authView").classList.add("hidden");
+  $("appView").classList.add("hidden");
+  authMessage("Carregando suas planilhas...");
+
+  try {
+    // Consultar o CashoutPAY sem bloquear o aplicativo
+    try {
+      const { data: sessionData, error: sessionError } =
+        await client.auth.getSession();
+
+      if (sessionError) throw sessionError;
+
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) throw new Error("Sessão não encontrada.");
+
+      const response = await fetch(
+        "https://tzirphxbgoqgrqvdpruw.supabase.co/functions/v1/ensure-subscription",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({})
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Falha na consulta.");
+      }
+
+      console.log("Resposta CashoutPAY:", result);
+
+      toast(
+        result.authorized
+          ? "CashoutPAY conectado: acesso autorizado!"
+          : "CashoutPAY respondeu: assinatura sem acesso."
+      );
+    } catch (billingError) {
+      console.error("Erro CashoutPAY:", billingError);
+      toast("CashoutPAY em teste; acesso ao app mantido.");
+    }
+
+    await client.from("profiles").upsert(
+      {
+        id: user.id,
+        full_name: user.user_metadata?.full_name || ""
+      },
+      { onConflict: "id" }
+    );
+
+    await ensureDefaults();
+    await loadCloud();
+
+    showApp();
+    updateAvatar();
+    setTabs();
+    fillWorkbookOptions();
+    render();
+
+    const old = JSON.parse(
+      localStorage.getItem(LEGACY_KEY) || "[]"
+    );
+
+    const localCats =
+      JSON.parse(localStorage.getItem(LEGACY_CATKEY) || "null") ||
+      defaultCats;
+
+    if (
+      accounts.length === 0 &&
+      old.length &&
+      !localStorage.getItem("planilhado_migrated_" + user.id)
+    ) {
+      $("appView").classList.add("hidden");
+      $("migrationView").classList.remove("hidden");
+      $("migrationSummary").textContent =
+        "Encontramos " + old.length +
+        " lançamento(s) antigos neste aparelho. Eles serão associados às planilhas Casa e Barbearia quando importados.";
+    }
+  } catch (e) {
+    showAuth();
+    authMessage(
+      "Não foi possível carregar o banco: " + (e.message || e)
+    );
+  } finally {
+    loading = false;
+  }
+}
 async function importLegacy(){const old=JSON.parse(localStorage.getItem(LEGACY_KEY)||"[]");const localCats=JSON.parse(localStorage.getItem(LEGACY_CATKEY)||"null")||defaultCats;try{let catMap={};for(const w of workbooks){for(const name of [...new Set([...defaultCats,...localCats])]){let c=categories.find(x=>x.workbook_id===w.id&&x.name.toLowerCase()===name.toLowerCase());if(!c){const {data,error}=await client.from("categories").insert({user_id:user.id,workbook_id:w.id,name}).select().single();if(error)throw error;c=data;categories.push(c)}catMap[w.id+"|"+name.toLowerCase()]=c.id}}const payload=old.map(a=>{const w=workbooks.find(x=>{const n=x.name.toLowerCase();return a.type==="barbearia"?(n==="barbearia"||n==="planilha 2"):(n==="casa"||n==="planilha 1")})||workbooks[0];const c=categories.find(x=>x.workbook_id===w.id&&x.name.toLowerCase()===String(a.cat||"Outros").toLowerCase());return{user_id:user.id,workbook_id:w.id,category_id:c?.id||null,description:a.desc||"Lançamento importado",amount:Number(a.value)||0,due_date:a.date,status:a.paid?"paid":"pending",reminder_days:Number(a.reminder??1)}}).filter(x=>x.amount>0&&x.due_date);if(payload.length){const {error}=await client.from("transactions").insert(payload);if(error)throw error}localStorage.setItem("planilhado_migrated_"+user.id,"1");await loadCloud();showApp();setTabs();render();toast(payload.length+" lançamento(s) importados!")}catch(e){$("migrationSummary").textContent="Erro na importação: "+(e.message||e)+". Seus dados locais continuam preservados."}}
 async function createWorkbook(name){name=name.trim();if(!name)return;if(workbooks.some(w=>w.name.toLowerCase()===name.toLowerCase())){toast("Já existe uma planilha com esse nome");return}try{const {data,error}=await client.from("workbooks").insert({user_id:user.id,name,icon:"📊"}).select().single();if(error)throw error;workbooks.push(data);const {data:cats,error:ce}=await client.from("categories").insert(defaultCats.map(n=>({user_id:user.id,workbook_id:data.id,name:n}))).select();if(ce)throw ce;categories.push(...cats);$("newWorkbook").value="";switchView(data.id);toast("Planilha criada")}catch(e){toast("Erro ao criar: "+e.message)}}
 async function persistTransaction(data){try{if(editingId){const {data:updated,error}=await client.from("transactions").update({workbook_id:data.workbook_id,category_id:data.category_id,description:data.desc,amount:data.value,due_date:data.date,status:data.status,reminder_days:data.reminder_days,updated_at:new Date().toISOString()}).eq("id",editingId).eq("user_id",user.id).select().single();if(error)throw error;const i=accounts.findIndex(x=>x.id===editingId);if(i>=0)accounts[i]={id:updated.id,workbook_id:updated.workbook_id,category_id:updated.category_id,desc:updated.description,value:Number(updated.amount),date:updated.due_date,status:updated.status,reminder_days:Number(updated.reminder_days??1)};toast("Conta atualizada")}else{const {data:created,error}=await client.from("transactions").insert({user_id:user.id,workbook_id:data.workbook_id,category_id:data.category_id,description:data.desc,amount:data.value,due_date:data.date,status:"pending",reminder_days:data.reminder_days}).select().single();if(error)throw error;accounts.push({id:created.id,workbook_id:created.workbook_id,category_id:created.category_id,desc:created.description,value:Number(created.amount),date:created.due_date,status:created.status,reminder_days:Number(created.reminder_days??1)});toast("Conta adicionada")}closeForm();render();saveLocalCache()}catch(e){toast("Não foi possível salvar: "+e.message)}}
